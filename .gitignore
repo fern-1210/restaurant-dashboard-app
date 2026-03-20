@@ -1,0 +1,46 @@
+
+## Below was created in the old setup 
+
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Local-only raw documents (legal retention)
+/raw_docs/
+
+# Cloud credentials (Google service account JSON, etc.)
+/credentials/
+
+# Local database + backups
+/data/
+/backups/
+
+# Archived experiments and dashboard backups (not tracked)
+/_archived_futureplanning/
+
+# Streamlit secrets / authenticator configs
+/.streamlit/
+*auth*.yaml
+*auth*.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+
+
+
+## other filess
+julian-help.md
+julian-playground.ipynb
+
+
+.cursor/
