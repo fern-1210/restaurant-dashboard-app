@@ -38,7 +38,13 @@ Built for a real plant-based restaurant in Porto, this is a practical, beginner-
 
 ▶ [Watch the full dashboard walkthrough on Loom](https://www.loom.com/share/4ed32146a9b447949a28b9745a8189aa)
 
-*(Add a screenshot here — GitHub renders images inline and makes a big difference to how the repo reads)*
+### Summary tab
+
+![Summary tab demo](docs/images/summary-tab.png)
+
+### Bank Details tab
+
+![Bank Details tab demo](docs/images/bank-details-tab.png)
 
 ---
 
@@ -182,7 +188,7 @@ Opens at `http://localhost:8501`.
 │   ├── L4_load_category_map_to_sqlite.py
 │   └── L4_generate_partner_mapping_template.py
 │
-├── python_packages/                # Reusable logic (imported by scripts)
+├── scripts_pipeline/                # Reusable logic (imported by scripts)
 │   ├── layers/                     # Layer-aligned entrypoints — read these first
 │   │   ├── l1_revenue.py
 │   │   ├── l2_revenue_sqlite.py
@@ -285,10 +291,10 @@ streamlit run app.py
 This project was built for one specific restaurant but designed to be adapted. Here is what you would need to change for a different business:
 
 ### Different POS system
-The revenue ingestion in `L1` expects Vendus CSV exports with columns `Day`, `Sales with VAT`, and `Sales`. If your POS exports differently, update `python_packages/revenue_ingest.py` — the rest of the pipeline is unchanged.
+The revenue ingestion in `L1` expects Vendus CSV exports with columns `Day`, `Sales with VAT`, and `Sales`. If your POS exports differently, update `scripts_pipeline/revenue_ingest.py` — the rest of the pipeline is unchanged.
 
 ### Different bank
-The bank parsers in `ingest/caixa.py` and `ingest/millennium.py` handle the specific CSV formats those banks export. Add a new file `ingest/yourbank.py` following the same pattern, then register it in `python_packages/layers/l3_bank_sqlite.py`.
+The bank parsers in `ingest/caixa.py` and `ingest/millennium.py` handle the specific CSV formats those banks export. Add a new file `ingest/yourbank.py` following the same pattern, then register it in `scripts_pipeline/layers/l3_bank_sqlite.py`.
 
 ### Different categories
 Edit `data/partner_input/venn_category_mapping.xlsx` and re-run L4. The category structure (group → category → subcategory) is flexible — add as many rows as you need.
@@ -322,13 +328,13 @@ All modules use a beginner-friendly `# what / why / how` comment style. If you a
 
 | Step | File | What you learn |
 |------|------|----------------|
-| 1 | `python_packages/paths.py` | How file paths are managed centrally |
-| 2 | `python_packages/db.py` | How to open a SQLite connection |
-| 3 | `python_packages/schema.py` | How tables and indexes are defined |
-| 4 | `python_packages/layers/l1_revenue.py` | How CSV files are read and validated |
-| 5 | `python_packages/layers/l2_revenue_sqlite.py` | How data is upserted into SQLite |
+| 1 | `scripts_pipeline/paths.py` | How file paths are managed centrally |
+| 2 | `scripts_pipeline/db.py` | How to open a SQLite connection |
+| 3 | `scripts_pipeline/schema.py` | How tables and indexes are defined |
+| 4 | `scripts_pipeline/layers/l1_revenue.py` | How CSV files are read and validated |
+| 5 | `scripts_pipeline/layers/l2_revenue_sqlite.py` | How data is upserted into SQLite |
 | 6 | `ingest/common.py` → `ingest/caixa.py` | How messy bank CSVs are normalised |
-| 7 | `python_packages/layers/l3_bank_sqlite.py` | How two sources merge into one table |
+| 7 | `scripts_pipeline/layers/l3_bank_sqlite.py` | How two sources merge into one table |
 | 8 | `dashboard/data_prep.py` | How SQL queries feed a dashboard |
 | 9 | `app.py` | How Streamlit renders it all |
 
