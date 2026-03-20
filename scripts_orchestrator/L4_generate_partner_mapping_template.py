@@ -33,8 +33,8 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from python_packages.db import connect_sqlite
-from python_packages.paths import (
+from scripts_pipeline.db import connect_sqlite
+from scripts_pipeline.paths import (
     DB_PATH,
     PARTNER_INPUT_DIR,
     PARTNER_MAPPING_TEMPLATE_PATH,

@@ -3,7 +3,7 @@
 Reusable Layer 1 logic: read Vendus revenue CSVs, transform to daily dataset, build audits.
 
 # Why
-Keeping transformation logic in python_packages makes it:
+Keeping transformation logic in scripts_pipeline makes it:
 - reusable by other scripts or notebooks
 - easier to test in isolation
 - cleaner for the L1 orchestration script (which only calls these and writes outputs)

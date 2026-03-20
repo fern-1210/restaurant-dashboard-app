@@ -7,7 +7,7 @@ This wrapper makes the L3 data flow visible in one place. Orchestration scripts
 import from here instead of multiple modules, so the "layer story" is obvious.
 
 # How
-Delegates to ingest.caixa and ingest.millennium for parsing, python_packages.bank_sqlite
+Delegates to ingest.caixa and ingest.millennium for parsing, scripts_pipeline.bank_sqlite
 for the insert. Uses db, paths, schema for connection and table setup.
 """
 
@@ -17,10 +17,10 @@ import pandas as pd
 
 from ingest.caixa import parse_caixa_csv
 from ingest.millennium import parse_millennium_xls
-from python_packages.bank_sqlite import insert_bank_transactions
-from python_packages.db import connect_sqlite
-from python_packages.paths import DB_PATH, RAW_BANK_DIR, REPORTS_DIR
-from python_packages.schema import create_all_tables
+from scripts_pipeline.bank_sqlite import insert_bank_transactions
+from scripts_pipeline.db import connect_sqlite
+from scripts_pipeline.paths import DB_PATH, RAW_BANK_DIR, REPORTS_DIR
+from scripts_pipeline.schema import create_all_tables
 
 
 def _list_caixa_files() -> list:

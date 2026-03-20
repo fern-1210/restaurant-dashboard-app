@@ -7,14 +7,14 @@ This wrapper makes the L1 data flow visible in one place. Orchestration scripts
 import from here instead of multiple modules, so the "layer story" is obvious.
 
 # How
-Delegates to python_packages.revenue_ingest for load/transform/audit logic.
+Delegates to scripts_pipeline.revenue_ingest for load/transform/audit logic.
 Writes outputs to warehouse and reports dirs, prints summary, returns exit code.
 """
 
 from __future__ import annotations
 
-from python_packages.paths import RAW_VENN_REVENUE_DIR, REPORTS_DIR, WAREHOUSE_DIR
-from python_packages.revenue_ingest import (
+from scripts_pipeline.paths import RAW_VENN_REVENUE_DIR, REPORTS_DIR, WAREHOUSE_DIR
+from scripts_pipeline.revenue_ingest import (
     build_revenue_audits,
     build_revenue_daily,
     load_all_vendus_sources,

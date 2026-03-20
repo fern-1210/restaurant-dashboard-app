@@ -20,11 +20,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Ensure repo root is on path so python_packages can be imported.
+# Ensure repo root is on path so scripts_pipeline can be imported.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from python_packages.layers.l2_revenue_sqlite import run_l2_revenue_sqlite
+from scripts_pipeline.layers.l2_revenue_sqlite import run_l2_revenue_sqlite
 
 if __name__ == "__main__":
     raise SystemExit(run_l2_revenue_sqlite())

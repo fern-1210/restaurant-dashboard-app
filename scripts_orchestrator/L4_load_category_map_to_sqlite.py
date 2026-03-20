@@ -17,11 +17,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Ensure repo root is on path so python_packages can be imported.
+# Ensure repo root is on path so scripts_pipeline can be imported.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from python_packages.layers.l4_category_sqlite import run_l4_category_sqlite
+from scripts_pipeline.layers.l4_category_sqlite import run_l4_category_sqlite
 
 if __name__ == "__main__":
     raise SystemExit(run_l4_category_sqlite())

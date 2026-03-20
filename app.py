@@ -34,8 +34,8 @@ from dashboard.data_prep import (
     get_transactions_by_category,
     period_from_year_month,
 )
-from python_packages.db import connect_sqlite
-from python_packages.paths import DB_PATH
+from scripts_pipeline.db import connect_sqlite
+from scripts_pipeline.paths import DB_PATH
 
 # ---- Colour palette (plan: green inflow, red outflow, neutral) ----
 COLOR_INFLOW = "#639922"

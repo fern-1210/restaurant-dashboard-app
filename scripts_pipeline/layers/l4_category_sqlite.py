@@ -18,8 +18,8 @@ import re
 import pandas as pd
 
 from ingest.common import normalize_description, now_utc_iso
-from python_packages.db import connect_sqlite
-from python_packages.paths import (
+from scripts_pipeline.db import connect_sqlite
+from scripts_pipeline.paths import (
     DB_PATH,
     DEFAULT_CATEGORY_XLSM_PATH,
     DEFAULT_CATEGORY_XLSX_PATH,
@@ -27,7 +27,7 @@ from python_packages.paths import (
     PARTNER_MAPPING_XLSX_PATH,
     REPORTS_DIR,
 )
-from python_packages.schema import create_all_tables
+from scripts_pipeline.schema import create_all_tables
 
 
 def _normalize_excel_columns(df: pd.DataFrame) -> tuple[str, pd.DataFrame]:

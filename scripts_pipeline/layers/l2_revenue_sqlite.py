@@ -7,16 +7,16 @@ This wrapper makes the L2 data flow visible in one place. Orchestration scripts
 import from here instead of multiple modules, so the "layer story" is obvious.
 
 # How
-Delegates to python_packages.revenue_sqlite for the CSV→SQLite load.
+Delegates to scripts_pipeline.revenue_sqlite for the CSV→SQLite load.
 Uses db, paths, schema for connection and table setup.
 """
 
 from __future__ import annotations
 
-from python_packages.db import connect_sqlite
-from python_packages.paths import DB_PATH, REPORTS_DIR, REVENUE_DAILY_CSV_PATH
-from python_packages.revenue_sqlite import load_revenue_daily_csv_to_sqlite
-from python_packages.schema import create_all_tables
+from scripts_pipeline.db import connect_sqlite
+from scripts_pipeline.paths import DB_PATH, REPORTS_DIR, REVENUE_DAILY_CSV_PATH
+from scripts_pipeline.revenue_sqlite import load_revenue_daily_csv_to_sqlite
+from scripts_pipeline.schema import create_all_tables
 
 
 def run_l2_revenue_sqlite() -> int:
