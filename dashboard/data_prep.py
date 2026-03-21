@@ -5,7 +5,10 @@ as a pure presentation layer.
 
 # SIMPLE VERSION (what we're building now)
 Use one Python module with parameterized SQL functions that prepare the exact data
-frames needed by dashboard pages.
+frames needed by dashboard pages. Not every function below is imported by app.py;
+several (e.g. monthly revenue trend, cashflow-by-month, expense breakdowns,
+get_bank_trend_monthly, transaction detail) are intentionally kept for future tabs
+or notebooks—not dead code.
 """
 
 from __future__ import annotations

@@ -68,7 +68,7 @@ Raw files  →  L1  →  L2  →  L3  →  L4  →  SQLite DB  →  Dashboard
 |-------|-------------|-------|--------|
 | **L1** | Ingest POS revenue exports into a clean daily CSV | Vendus CSV files | `revenue_daily.csv` |
 | **L2** | Load the revenue CSV into SQLite | `revenue_daily.csv` | `revenue_daily` table |
-| **L3** | Parse and normalise bank statements into SQLite | Bank CSVs (Caixa, Millennium) | `bank_transactions` table |
+| **L3** | Parse and normalise bank statements into SQLite | Caixa CSV + Millennium `.xls` exports | `bank_transactions` table |
 | **L4** | Load your category mapping into SQLite | Excel category map | `transaction_category_map` table |
 
 Each layer writes audit reports so you can verify what was loaded and catch anything unexpected.
@@ -258,7 +258,7 @@ mkdir -p data/warehouse data/reports data/partner_input
 Then copy your:
 - Vendus CSV exports → `raw_docs/venn_revenue/`
 - Caixa CSV statements → `raw_docs/bank_statements/account_1-Caixa-Geral-Depositos/`
-- Millennium CSV statements → `raw_docs/bank_statements/account_2-Millennium-bcp/`
+- Millennium `.xls` exports → `raw_docs/bank_statements/account_2-Millennium-bcp/`
 
 ### 5. Run the pipeline
 ```bash
@@ -294,7 +294,7 @@ This project was built for one specific restaurant but designed to be adapted. H
 The revenue ingestion in `L1` expects Vendus CSV exports with columns `Day`, `Sales with VAT`, and `Sales`. If your POS exports differently, update `scripts_pipeline/revenue_ingest.py` — the rest of the pipeline is unchanged.
 
 ### Different bank
-The bank parsers in `ingest/caixa.py` and `ingest/millennium.py` handle the specific CSV formats those banks export. Add a new file `ingest/yourbank.py` following the same pattern, then register it in `scripts_pipeline/layers/l3_bank_sqlite.py`.
+The Caixa parser (`ingest/caixa.py`) expects CSV exports; the Millennium parser (`ingest/millennium.py`) expects `.xls` files (and handles TSV-in-disguise quirks). Add a new file `ingest/yourbank.py` following the same pattern, then register it in `scripts_pipeline/layers/l3_bank_sqlite.py`.
 
 ### Different categories
 Edit `data/partner_input/venn_category_mapping.xlsx` and re-run L4. The category structure (group → category → subcategory) is flexible — add as many rows as you need.

@@ -9,7 +9,7 @@ Single entry point so you run: streamlit run app.py
 - Connects to SQLite warehouse
 - Renders sidebar filters (year, month, compare) and compact data sources panel
 - Renders Summary tab: KPIs, inflow/outflow category bar charts
-- Renders Bank Details tab: bank KPIs, category drill-down expanders, trend chart
+- Renders Bank Details tab: bank KPIs, category drill-down expanders
 """
 
 from __future__ import annotations
