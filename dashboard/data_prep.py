@@ -524,7 +524,7 @@ def get_summary_kpis(
     compare_to: str,
 ) -> dict:
     """
-    Compute all 4 Summary KPI values and deltas for the selected month.
+    Compute Summary revenue KPI values and deltas for the selected month.
 
     Parameters:
         conn: Open SQLite connection.
@@ -532,9 +532,8 @@ def get_summary_kpis(
         compare_to: "Previous month" or "Same month last year".
 
     Returns:
-        Dict with keys: revenue_gross, total_expenditure, caixa_expenditure,
-        millennium_expenditure. Each value is a dict with: value, delta_abs,
-        delta_pct, source.
+        Dict with keys: revenue_gross, revenue_net. Each value is a dict with:
+        value, delta_abs, delta_pct, source. Bank spend KPIs live on Bank Details.
     """
     period = _month_to_period(month_yyyy_mm)
     compare_month = get_compare_period(month_yyyy_mm, compare_to)
@@ -548,7 +547,7 @@ def get_summary_kpis_for_period(
     compare_period: DashboardPeriod | None = None,
 ) -> dict:
     """
-    Compute all 4 Summary KPI values and deltas for a date range (e.g. full year).
+    Compute Summary revenue KPI values and deltas for a date range (e.g. full year).
 
     Parameters:
         conn: Open SQLite connection.
@@ -556,11 +555,75 @@ def get_summary_kpis_for_period(
         compare_period: Optional comparison period for deltas (e.g. prior year).
 
     Returns:
-        Dict with keys: revenue_gross, total_expenditure, caixa_expenditure,
-        millennium_expenditure. Each value is a dict with: value, delta_abs,
-        delta_pct, source.
+        Dict with keys: revenue_gross, revenue_net. Each value is a dict with:
+        value, delta_abs, delta_pct, source.
     """
     return _get_summary_kpis_impl(conn, period, compare_period)
+
+
+def _calendar_days_in_period(period: DashboardPeriod) -> int:
+    # ----------------------------------
+    # Inclusive day count for dashboard period
+    # ----------------------------------
+    start = pd.to_datetime(period.start_date, errors="raise")
+    end = pd.to_datetime(period.end_date, errors="raise")
+    return int((end - start).days + 1)
+
+
+def get_operational_days_for_period(conn: sqlite3.Connection, period: DashboardPeriod) -> dict:
+    """
+    Count days with POS sales vs calendar days without sales for the period.
+
+    Parameters:
+        conn: Open SQLite connection.
+        period: Selected inclusive date range.
+
+    Returns:
+        Dict with:
+        - operational_days: distinct revenue_daily dates with sales_gross > 0
+        - closed_days: calendar days in period minus operational_days
+        - total_calendar_days: inclusive length of period
+        - avg_net_per_open_day: mean sales_net on days summed / operational_days, or None
+        - max_revenue_date: latest date in revenue_daily within period, or None
+        - sum_sales_net: total net revenue in period (for avg; matches KPI sum)
+        - source: provenance string for UI toggle
+    """
+    # ----------------------------------
+    # Single round-trip: open-day count, max date, net sum
+    # ----------------------------------
+    row = conn.execute(
+        """
+        SELECT
+            (
+                SELECT COUNT(DISTINCT date) FROM revenue_daily
+                WHERE date BETWEEN ? AND ? AND COALESCE(sales_gross, 0) > 0
+            ) AS operational_days,
+            (
+                SELECT MAX(date) FROM revenue_daily WHERE date BETWEEN ? AND ?
+            ) AS max_revenue_date,
+            (
+                SELECT COALESCE(SUM(sales_net), 0) FROM revenue_daily WHERE date BETWEEN ? AND ?
+            ) AS sum_sales_net
+        """,
+        [period.start_date, period.end_date] * 3,
+    ).fetchone()
+
+    operational = int(row[0] or 0)
+    max_date = row[1]
+    sum_net = float(row[2] or 0)
+    total_cal = _calendar_days_in_period(period)
+    closed = max(0, total_cal - operational)
+    avg_net = (sum_net / operational) if operational else None
+
+    return {
+        "operational_days": operational,
+        "closed_days": closed,
+        "total_calendar_days": total_cal,
+        "avg_net_per_open_day": avg_net,
+        "max_revenue_date": str(max_date) if max_date else None,
+        "sum_sales_net": sum_net,
+        "source": "revenue_daily · distinct date where sales_gross > 0; calendar span from filter",
+    }
 
 
 def _get_summary_kpis_impl(
@@ -576,63 +639,33 @@ def _get_summary_kpis_impl(
         ).fetchone()
         return float(row[0] or 0)
 
-    def _expenditure(p: DashboardPeriod, bank_filter: str) -> float:
-        # bank_filter: "both", "caixa", "millennium"
-        if bank_filter == "both":
-            sql = """
-                SELECT COALESCE(SUM(ABS(amount)), 0) FROM bank_transactions
-                WHERE value_date BETWEEN ? AND ? AND amount < 0
-                AND bank IN ('caixa', 'millennium')
-            """
-        else:
-            sql = """
-                SELECT COALESCE(SUM(ABS(amount)), 0) FROM bank_transactions
-                WHERE value_date BETWEEN ? AND ? AND amount < 0 AND bank = ?
-            """
-        params = [p.start_date, p.end_date] if bank_filter == "both" else [p.start_date, p.end_date, bank_filter]
-        row = conn.execute(sql, params).fetchone()
+    def _revenue_net(p: DashboardPeriod) -> float:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(sales_net), 0) FROM revenue_daily WHERE date BETWEEN ? AND ?",
+            [p.start_date, p.end_date],
+        ).fetchone()
         return float(row[0] or 0)
 
-    rev_cur = _revenue_gross(period)
-    rev_cmp = _revenue_gross(compare_period) if compare_period else 0
-    d_abs, d_pct = _format_delta(rev_cur, rev_cmp)
+    rev_gross_cur = _revenue_gross(period)
+    rev_gross_cmp = _revenue_gross(compare_period) if compare_period else 0
+    dg_abs, dg_pct = _format_delta(rev_gross_cur, rev_gross_cmp)
 
-    tot_cur = _expenditure(period, "both")
-    tot_cmp = _expenditure(compare_period, "both") if compare_period else 0
-    tot_d_abs, tot_d_pct = _format_delta(tot_cur, tot_cmp)
-
-    cax_cur = _expenditure(period, "caixa")
-    cax_cmp = _expenditure(compare_period, "caixa") if compare_period else 0
-    cax_d_abs, cax_d_pct = _format_delta(cax_cur, cax_cmp)
-
-    mil_cur = _expenditure(period, "millennium")
-    mil_cmp = _expenditure(compare_period, "millennium") if compare_period else 0
-    mil_d_abs, mil_d_pct = _format_delta(mil_cur, mil_cmp)
+    rev_net_cur = _revenue_net(period)
+    rev_net_cmp = _revenue_net(compare_period) if compare_period else 0
+    dn_abs, dn_pct = _format_delta(rev_net_cur, rev_net_cmp)
 
     return {
         "revenue_gross": {
-            "value": rev_cur,
-            "delta_abs": d_abs,
-            "delta_pct": d_pct,
+            "value": rev_gross_cur,
+            "delta_abs": dg_abs,
+            "delta_pct": dg_pct,
             "source": "revenue_daily · sales_gross",
         },
-        "total_expenditure": {
-            "value": tot_cur,
-            "delta_abs": tot_d_abs,
-            "delta_pct": tot_d_pct,
-            "source": "bank_transactions · bank in (Caixa, Millennium) · amount < 0",
-        },
-        "caixa_expenditure": {
-            "value": cax_cur,
-            "delta_abs": cax_d_abs,
-            "delta_pct": cax_d_pct,
-            "source": "bank_transactions · bank = Caixa · amount < 0",
-        },
-        "millennium_expenditure": {
-            "value": mil_cur,
-            "delta_abs": mil_d_abs,
-            "delta_pct": mil_d_pct,
-            "source": "bank_transactions · bank = Millennium · amount < 0",
+        "revenue_net": {
+            "value": rev_net_cur,
+            "delta_abs": dn_abs,
+            "delta_pct": dn_pct,
+            "source": "revenue_daily · sales_net",
         },
     }
 

@@ -8,7 +8,7 @@ Single entry point so you run: streamlit run app.py
 # How
 - Connects to SQLite warehouse
 - Renders sidebar filters (year, month, compare) and compact data sources panel
-- Renders Summary tab: KPIs, inflow/outflow category bar charts
+- Renders Summary tab: revenue + operational-day KPIs, legend expander, readable category bars
 - Renders Bank Details tab: bank KPIs, category drill-down expanders
 """
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 import calendar
 
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.data_prep import (
@@ -30,6 +31,7 @@ from dashboard.data_prep import (
     get_compare_period,
     get_data_source_status,
     get_last_import_timestamp,
+    get_operational_days_for_period,
     get_summary_kpis_for_period,
     get_transactions_by_category,
     period_from_year_month,
@@ -56,8 +58,18 @@ def _render_source_line(source: str, show_sources: bool) -> None:
         st.caption(f"SOURCE: {source}")
 
 
-def _metric_card(label: str, value: str, delta: str, delta_up: bool, style: str, source: str, show_sources: bool) -> None:
-    """Render a styled KPI card with value, delta and optional source line."""
+def _metric_card(
+    label: str,
+    value: str,
+    delta: str,
+    delta_up: bool,
+    style: str,
+    source: str,
+    show_sources: bool,
+    *,
+    show_delta: bool = True,
+) -> None:
+    """Render a styled KPI card with value, optional delta row, and optional source line."""
     # Map style names to card colours so visuals stay consistent.
     styles = {
         "hero_green": {"bg": "#F2F9EC", "border": COLOR_INFLOW, "delta": "#2E7D32"},
@@ -68,6 +80,15 @@ def _metric_card(label: str, value: str, delta: str, delta_up: bool, style: str,
     card_style = styles.get(style, styles["hero_neutral"])
     # Choose delta color from direction for fast visual reading.
     delta_color = "#2E7D32" if delta_up else card_style["delta"]
+    # ----------------------------------
+    # Delta row: hide for count-only KPIs (e.g. operational days)
+    # ----------------------------------
+    if show_delta:
+        delta_block = (
+            f'<div style="font-size:0.86rem;color:{delta_color};font-weight:600;margin-top:0.35rem;">{delta}</div>'
+        )
+    else:
+        delta_block = '<div style="font-size:0.86rem;color:#94a3b8;margin-top:0.35rem;">&nbsp;</div>'
     # Render card with compact hierarchy: label, value, delta.
     st.markdown(
         f"""
@@ -81,13 +102,45 @@ def _metric_card(label: str, value: str, delta: str, delta_up: bool, style: str,
         ">
             <div style="font-size:0.78rem;letter-spacing:0.03em;color:#475569;font-weight:700;">{label}</div>
             <div style="font-size:1.6rem;font-weight:800;color:#0f172a;line-height:1.2;margin-top:0.35rem;">{value}</div>
-            <div style="font-size:0.86rem;color:{delta_color};font-weight:600;margin-top:0.35rem;">{delta}</div>
+            {delta_block}
         </div>
         """,
         unsafe_allow_html=True,
     )
     # Show source line below each card only when requested.
     _render_source_line(source, show_sources)
+
+
+def _style_summary_category_bar(fig: go.Figure, n_categories: int, bar_color: str) -> None:
+    # ----------------------------------
+    # Readable horizontal bars: height, fonts, grid, unified bar colour
+    # ----------------------------------
+    height = max(320, min(960, 34 * max(n_categories, 1)))
+    fig.update_layout(
+        height=height,
+        showlegend=False,
+        plot_bgcolor="white",
+        margin=dict(l=8, r=36, t=12, b=56),
+        xaxis=dict(
+            title="Amount (€)",
+            showgrid=True,
+            gridcolor="rgba(15, 23, 42, 0.08)",
+            tickfont=dict(size=13),
+            title_font=dict(size=14),
+            tickprefix="€",
+            separatethousands=True,
+        ),
+        yaxis=dict(
+            title="",
+            showgrid=False,
+            tickfont=dict(size=13),
+            automargin=True,
+        ),
+    )
+    fig.update_traces(
+        marker_color=bar_color,
+        hovertemplate="<b>%{y}</b><br>€%{x:,.2f}<extra></extra>",
+    )
 
 
 def _format_month(m: str) -> str:
@@ -219,7 +272,8 @@ def main() -> None:
     st.title("VENN FINANCIAL DASHBOARD")
     _render_small_copy(
         f"{_format_period_label(period, selected_month)} · Porto · plant-based. "
-        "Summary view shows revenue and bank spend; Bank Details lets you drill into categories."
+        "Summary: Vendus revenue and trading-day counts; category bars are bank inflows/outflows. "
+        "Bank Details tab has full cash KPIs and transactions."
     )
     st.divider()
 
@@ -227,7 +281,7 @@ def main() -> None:
     summary_tab, bank_tab = st.tabs(["SUMMARY", "BANK DETAILS"])
 
     with summary_tab:
-        _render_summary_tab(conn, period, compare_period, selected_month, show_sources)
+        _render_summary_tab(conn, period, compare_period, show_sources)
 
     with bank_tab:
         _render_bank_details_tab(conn, period, compare_period, show_sources)
@@ -239,27 +293,35 @@ def _render_summary_tab(
     conn,
     period: DashboardPeriod,
     compare_period: DashboardPeriod | None,
-    selected_month: str | None,
     show_sources: bool,
 ) -> None:
-    """Summary tab: KPIs and category bar charts (inflow above outflow)."""
-    # KPI block intro
-    _section_header(
-        "Key metrics",
-        "Revenue from Vendus and bank expenditure from Caixa + Millennium for the selected period.",
-        COLOR_NEUTRAL,
-    )
+    """Summary tab: revenue KPIs, operational days, legend, category bar charts."""
+    # ----------------------------------
+    # Collapsible glossary so first-time readers decode VAT vs net and data sources
+    # ----------------------------------
+    with st.expander("How to read this dashboard", expanded=False):
+        st.markdown(
+            """
+**Glossary**
+- **Net revenue (with VAT)** — Total sales including VAT from Vendus (`sales_gross`).
+- **Net revenue (without VAT)** — Same period, excluding VAT (`sales_net`).
+- **Operational day** — A calendar day in the filter range with at least one sale recorded.
+- **Closed day** — A day in the range with no sale row (closed, holiday, or missing POS export).
+
+**Two different data sources**
+- Top revenue cards come from **Vendus** daily totals.
+- **Inflow / outflow** charts use **Caixa + Millennium** movements and your category mapping — not the same as “sales by product”.
+
+**Compare to** (sidebar) — Revenue card deltas use **Previous month** or **same month last year** when a single month is selected; for **All months** they compare to the **prior calendar year**.
+            """.strip()
+        )
 
     kpis = get_summary_kpis_for_period(conn, period, compare_period)
+    days_info = get_operational_days_for_period(conn, period)
 
-    # BETTER WAY (for when you're ready)
-    # Build a reusable list of card specs and loop through them with one renderer helper.
-    # This is better when card count grows because it removes repeated UI code blocks.
-
-    # SIMPLE VERSION (what we're building now)
-    # Keep explicit card calls so the flow is easier to follow while learning Streamlit layout.
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
+    st.subheader("BUSINESS REVENUE")
+    rev_c1, rev_c2 = st.columns(2)
+    with rev_c1:
         k = kpis["revenue_gross"]
         delta_str = f"{k['delta_abs']} | {k['delta_pct']}" if k["delta_abs"] != "N/A" else "N/A"
         _metric_card(
@@ -271,42 +333,58 @@ def _render_summary_tab(
             source=k["source"],
             show_sources=show_sources,
         )
-    with col2:
-        k = kpis["total_expenditure"]
+    with rev_c2:
+        k = kpis["revenue_net"]
         delta_str = f"{k['delta_abs']} | {k['delta_pct']}" if k["delta_abs"] != "N/A" else "N/A"
         _metric_card(
-            label="TOTAL EXPENDITURE (CAIXA + MILLENNIUM)",
+            label="NET REVENUE WITHOUT VAT",
             value=f"€{k['value']:,.2f}",
             delta=delta_str,
             delta_up=not str(k["delta_abs"]).startswith("-"),
-            style="hero_red",
+            style="hero_green",
             source=k["source"],
             show_sources=show_sources,
         )
-    with col3:
-        k = kpis["caixa_expenditure"]
-        delta_str = f"{k['delta_abs']} | {k['delta_pct']}" if k["delta_abs"] != "N/A" else "N/A"
+
+    vat_bridge = kpis["revenue_gross"]["value"] - kpis["revenue_net"]["value"]
+    avg_line = ""
+    if days_info["avg_net_per_open_day"] is not None:
+        avg_line = f"Average net revenue per **open day:** €{days_info['avg_net_per_open_day']:,.2f}. "
+    max_d = days_info["max_revenue_date"]
+    through_line = f"Latest revenue date in this period: **{max_d}**." if max_d else ""
+    st.caption(
+        f"{avg_line}{through_line} **VAT included in gross (approx.):** €{vat_bridge:,.2f} "
+        "(gross − net for the period)."
+    )
+
+    st.subheader("OPERATIONAL DAYS")
+    st.caption(
+        "Closed days include holidays and any day with no POS row; they may also reflect export gaps."
+    )
+    day_c1, day_c2 = st.columns(2)
+    with day_c1:
         _metric_card(
-            label="BANK EXPENDITURE - CAIXA",
-            value=f"€{k['value']:,.2f}",
-            delta=delta_str,
-            delta_up=not str(k["delta_abs"]).startswith("-"),
-            style="hero_red",
-            source=k["source"],
+            label="DAYS OPEN (WITH SALES)",
+            value=f"{days_info['operational_days']}",
+            delta="",
+            delta_up=True,
+            style="hero_neutral",
+            source=days_info["source"],
             show_sources=show_sources,
+            show_delta=False,
         )
-    with col4:
-        k = kpis["millennium_expenditure"]
-        delta_str = f"{k['delta_abs']} | {k['delta_pct']}" if k["delta_abs"] != "N/A" else "N/A"
+    with day_c2:
         _metric_card(
-            label="BANK EXPENDITURE - MILLENNIUM",
-            value=f"€{k['value']:,.2f}",
-            delta=delta_str,
-            delta_up=not str(k["delta_abs"]).startswith("-"),
-            style="hero_red",
-            source=k["source"],
+            label="DAYS CLOSED (NO SALES)",
+            value=f"{days_info['closed_days']}",
+            delta="",
+            delta_up=True,
+            style="hero_neutral",
+            source=days_info["source"],
             show_sources=show_sources,
+            show_delta=False,
         )
+    st.caption(f"Calendar days in period: **{days_info['total_calendar_days']}**.")
 
     st.divider()
 
@@ -351,7 +429,7 @@ def _render_summary_tab(
                 color="category",
                 color_discrete_sequence=[COLOR_INFLOW, "#97C459", "#FAC775", COLOR_NEUTRAL],
             )
-            fig_in.update_layout(showlegend=False, plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
+            _style_summary_category_bar(fig_in, len(inflow_view), COLOR_INFLOW)
             st.plotly_chart(fig_in, use_container_width=True)
         _render_source_line("bank_transactions + transaction_category_map · amount > 0 grouped by category", show_sources)
 
@@ -398,7 +476,7 @@ def _render_summary_tab(
                 color="category",
                 color_discrete_sequence=[COLOR_OUTFLOW, "#E07B7B", "#FAC775", COLOR_NEUTRAL],
             )
-            fig_out.update_layout(showlegend=False, plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
+            _style_summary_category_bar(fig_out, len(outflow_view), COLOR_OUTFLOW)
             st.plotly_chart(fig_out, use_container_width=True)
         _render_source_line("bank_transactions + transaction_category_map · amount < 0 grouped by category", show_sources)
 

@@ -159,10 +159,11 @@ Opens at `http://localhost:8501`.
 - **Data sources** — toggle to show or hide which DB table each metric pulls from
 
 ### Summary tab
-- Four KPI cards: Net Revenue (with VAT), Total Expenditure, Caixa Expenditure, Millennium Expenditure
-- Each card shows the value, a signed delta (e.g. +€290 | +1.5%), and the comparison period
-- Inflow by category — bar chart with TOP 5 / TOP 10 / ALL controls and category exclusion
-- Outflow by category — same controls
+- **How to read this dashboard** — collapsible glossary (Vendus vs bank charts, open/closed days, compare logic)
+- **Business revenue** — two KPI cards: net revenue with VAT and without VAT, plus caption (avg net per open day, latest revenue date in period, VAT bridge)
+- **Operational days** — days with at least one sale vs closed days (no sale row), with calendar-day total for the filter
+- Revenue cards show comparison deltas from the sidebar **Compare to** setting
+- Inflow / outflow by category — bar charts with improved typography and height; TOP 5 / TOP 10 / ALL and category exclusion (bank movements, not Vendus product sales)
 
 ### Bank Details tab
 - Two KPI rows: inflow / outflow / net, then Caixa vs Millennium split
