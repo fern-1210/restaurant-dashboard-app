@@ -102,8 +102,8 @@ Every bank transaction from all accounts, normalised to a common schema.
 | `id` | INTEGER | Primary key |
 | `account_id` | TEXT | Which account |
 | `bank` | TEXT | Bank name (Caixa / Millennium) |
-| `posted_date` | TEXT | Date transaction cleared |
-| `value_date` | TEXT | Date transaction initiated |
+| `value_date` | TEXT | Main date (Data Valor — when funds count) |
+| `posting_date` | TEXT | When bank posted (Data Lancamento) |
 | `description_raw` | TEXT | Original bank description |
 | `description_norm` | TEXT | Normalised description for matching |
 | `amount` | REAL | Negative = outflow, positive = inflow |

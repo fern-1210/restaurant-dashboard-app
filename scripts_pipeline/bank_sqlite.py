@@ -43,8 +43,8 @@ def insert_bank_transactions(conn: sqlite3.Connection, transactions: pd.DataFram
     cols = [
         "account_id",
         "bank",
-        "posted_date",
         "value_date",
+        "posting_date",
         "description_raw",
         "description_norm",
         "amount",
@@ -60,8 +60,13 @@ def insert_bank_transactions(conn: sqlite3.Connection, transactions: pd.DataFram
     if missing:
         raise ValueError(f"Transaction DataFrame missing columns: {missing}")
 
-    # Convert DataFrame rows to tuples in a deterministic order.
-    rows = [tuple(transactions.loc[i, cols].tolist()) for i in range(len(transactions))]
+    # Convert DataFrame rows to tuples; replace pandas NA/NaT with None for SQLite.
+    def _to_sqlite_val(x):
+        if pd.isna(x):
+            return None
+        return x
+
+    rows = [tuple(_to_sqlite_val(v) for v in transactions.loc[i, cols].tolist()) for i in range(len(transactions))]
 
     # How many rows we are attempting to insert.
     attempted = len(rows)
@@ -75,8 +80,8 @@ def insert_bank_transactions(conn: sqlite3.Connection, transactions: pd.DataFram
         INSERT OR IGNORE INTO bank_transactions (
             account_id,
             bank,
-            posted_date,
             value_date,
+            posting_date,
             description_raw,
             description_norm,
             amount,

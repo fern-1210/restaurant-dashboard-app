@@ -175,12 +175,12 @@ def _write_coverage_audit(conn) -> Path:
     unmapped_path = REPORTS_DIR / "transaction_category_unmapped.csv"
     pd.read_sql_query(
         """
-        SELECT b.posted_date, b.description_raw, b.description_norm, b.amount,
+        SELECT b.value_date, b.description_raw, b.description_norm, b.amount,
                b.bank, b.account_id, b.source_file
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
         WHERE m.description_norm IS NULL
-        ORDER BY b.posted_date DESC
+        ORDER BY b.value_date DESC
         """,
         conn,
     ).to_csv(unmapped_path, index=False)

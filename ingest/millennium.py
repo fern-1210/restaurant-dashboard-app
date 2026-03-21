@@ -58,20 +58,19 @@ def _pick_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
     return None
 
 
-def _to_iso_date_any(s: pd.Series) -> pd.Series:
+def _to_iso_date_any(s: pd.Series, *, dayfirst: bool = False) -> pd.Series:
     """
     # What
     Convert a series of date-like values into ISO date strings.
 
     # Why
-    Millennium exports can use `YYYY/MM/DD` (year-first) which doesn't need dayfirst parsing,
-    and can also come through as actual Excel date objects if it's a real spreadsheet.
+    Millennium .xlsx uses DD/MM/YYYY (dayfirst=True); .xls/TSV uses YYYY/MM/DD.
+    Excel date objects parse without dayfirst.
 
     # How
-    Let pandas parse flexibly and then format as `YYYY-MM-DD`.
+    Let pandas parse with optional dayfirst, then format as `YYYY-MM-DD`.
     """
-
-    dt = pd.to_datetime(s, errors="coerce")
+    dt = pd.to_datetime(s, errors="coerce", dayfirst=dayfirst)
     return dt.dt.date.astype("string")
 
 
@@ -152,18 +151,16 @@ def parse_millennium_xls(path: Path, *, bank: str = "millennium", currency: str 
     - Normalize/clean and split parsed vs unparsed
     """
 
-    # Read the "XLS" file.
+    # Read the Millennium export file.
     #
     # Important discovery from your real files:
-    # - Some Millennium exports are NOT real Excel `.xls` binaries
-    # - They are tab-separated text files that just use the `.xls` extension
-    #
-    # So we detect the format and choose the correct parser.
-    if _is_real_xls(path):
-        # Real legacy Excel workbook (BIFF / OLE2).
+    # - .xlsx: modern Excel; use openpyxl. Has 8 metadata rows, then header row 8 (0-based).
+    # - .xls: either real OLE2/BIFF or tab-separated text with .xls extension.
+    if path.suffix.lower() == ".xlsx":
+        df = pd.read_excel(path, engine="openpyxl", header=7)
+    elif _is_real_xls(path):
         df = pd.read_excel(path, engine="xlrd")
     else:
-        # Tab-separated text export.
         df = _read_millennium_table_from_text(path)
 
     # Drop fully-empty rows/columns that commonly appear in exports.
@@ -202,9 +199,12 @@ def parse_millennium_xls(path: Path, *, bank: str = "millennium", currency: str 
     # Otherwise we fallback to the folder name.
     out["account_id"] = df[col_account] if col_account else path.parent.name
 
-    # Dates to ISO.
-    out["posted_date"] = _to_iso_date_any(df[col_date])
-    out["value_date"] = _to_iso_date_any(df[col_value_date]) if col_value_date else None
+    # Dates: value_date (Data Valor) = main; posting_date (Data Lancamento) = when bank posted.
+    # xlsx uses DD/MM/YYYY; xls/TSV uses YYYY/MM/DD.
+    dayfirst = path.suffix.lower() == ".xlsx"
+    _date = lambda ser: _to_iso_date_any(ser, dayfirst=dayfirst)
+    out["value_date"] = _date(df[col_value_date]) if col_value_date else _date(df[col_date])
+    out["posting_date"] = _date(df[col_date]) if col_date else None
 
     # Descriptions.
     out["description_raw"] = df[col_desc] if col_desc else None
@@ -214,11 +214,18 @@ def parse_millennium_xls(path: Path, *, bank: str = "millennium", currency: str 
     # - If there's a single amount column: use it as signed number (assuming export already signs it)
     # - Else if there are debit/credit columns: amount = credit - debit
     if col_amount:
-        # Handle Portuguese numeric formats that may still be strings (e.g. "1.185,08").
-        out["amount"] = pd.to_numeric(
-            df[col_amount].astype(str).str.replace(" ", "", regex=False).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
-            errors="coerce",
-        )
+        raw = df[col_amount]
+        if pd.api.types.is_numeric_dtype(raw):
+            out["amount"] = pd.to_numeric(raw, errors="coerce")
+        else:
+            # Portuguese string format: 1.185,08 (thousands=., decimal=,)
+            out["amount"] = pd.to_numeric(
+                raw.astype(str)
+                .str.replace(" ", "", regex=False)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False),
+                errors="coerce",
+            )
     elif col_debit and col_credit:
         debit = pd.to_numeric(df[col_debit], errors="coerce").fillna(0)
         credit = pd.to_numeric(df[col_credit], errors="coerce").fillna(0)
@@ -241,9 +248,9 @@ def parse_millennium_xls(path: Path, *, bank: str = "millennium", currency: str 
     out["imported_at"] = now_utc_iso()
 
     # Filter out "non-transaction" rows:
-    # - posted_date missing => not a real transaction row
+    # - value_date missing => not a real transaction row
     # - amount missing => not usable for financial analysis
-    bad_mask = out["posted_date"].isna() | out["amount"].isna()
+    bad_mask = out["value_date"].isna() | out["amount"].isna()
 
     unparsed = out.loc[bad_mask].copy().reset_index(drop=True)
     parsed = out.loc[~bad_mask].copy().reset_index(drop=True)

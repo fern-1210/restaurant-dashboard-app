@@ -297,7 +297,7 @@ def get_expense_by_description(conn: sqlite3.Connection, period: DashboardPeriod
             ROUND(SUM(ABS(amount)), 2) AS expense_total,
             COUNT(*) AS transaction_count
         FROM bank_transactions
-        WHERE posted_date BETWEEN ? AND ?
+        WHERE value_date BETWEEN ? AND ?
           AND amount < 0
         GROUP BY COALESCE(description_norm, '(blank)')
         ORDER BY expense_total DESC
@@ -329,7 +329,7 @@ def get_expense_by_category(conn: sqlite3.Connection, period: DashboardPeriod) -
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m
             ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ?
+        WHERE b.value_date BETWEEN ? AND ?
           AND b.amount < 0
         GROUP BY
             COALESCE(m.category, 'UNMAPPED'),
@@ -357,13 +357,13 @@ def get_cashflow_monthly(conn: sqlite3.Connection, period: DashboardPeriod) -> p
     return pd.read_sql_query(
         """
         SELECT
-            strftime('%Y-%m', posted_date) AS month,
+            strftime('%Y-%m', value_date) AS month,
             ROUND(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 2) AS cash_in,
             ROUND(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 2) AS cash_out,
             ROUND(SUM(amount), 2) AS net_cashflow
         FROM bank_transactions
-        WHERE posted_date BETWEEN ? AND ?
-        GROUP BY strftime('%Y-%m', posted_date)
+        WHERE value_date BETWEEN ? AND ?
+        GROUP BY strftime('%Y-%m', value_date)
         ORDER BY month
         """,
         conn,
@@ -386,9 +386,9 @@ def get_available_years(conn: sqlite3.Connection) -> list[int]:
     # Union years from bank and revenue so we show all years with any data.
     rows = conn.execute(
         """
-        SELECT DISTINCT CAST(strftime('%Y', posted_date) AS INTEGER) AS year
+        SELECT DISTINCT CAST(strftime('%Y', value_date) AS INTEGER) AS year
         FROM bank_transactions
-        WHERE posted_date IS NOT NULL
+        WHERE value_date IS NOT NULL
         UNION
         SELECT DISTINCT CAST(strftime('%Y', date) AS INTEGER) AS year
         FROM revenue_daily
@@ -412,9 +412,9 @@ def get_available_months_for_year(conn: sqlite3.Connection, year: int) -> list[s
     """
     rows = conn.execute(
         """
-        SELECT DISTINCT strftime('%Y-%m', posted_date) AS month
+        SELECT DISTINCT strftime('%Y-%m', value_date) AS month
         FROM bank_transactions
-        WHERE posted_date IS NOT NULL AND strftime('%Y', posted_date) = ?
+        WHERE value_date IS NOT NULL AND strftime('%Y', value_date) = ?
         UNION
         SELECT DISTINCT strftime('%Y-%m', date) AS month
         FROM revenue_daily
@@ -458,9 +458,9 @@ def get_available_months(conn: sqlite3.Connection) -> list[str]:
     # Union months from bank and revenue so we show all months with any data.
     rows = conn.execute(
         """
-        SELECT DISTINCT strftime('%Y-%m', posted_date) AS month
+        SELECT DISTINCT strftime('%Y-%m', value_date) AS month
         FROM bank_transactions
-        WHERE posted_date IS NOT NULL
+        WHERE value_date IS NOT NULL
         UNION
         SELECT DISTINCT strftime('%Y-%m', date) AS month
         FROM revenue_daily
@@ -581,13 +581,13 @@ def _get_summary_kpis_impl(
         if bank_filter == "both":
             sql = """
                 SELECT COALESCE(SUM(ABS(amount)), 0) FROM bank_transactions
-                WHERE posted_date BETWEEN ? AND ? AND amount < 0
+                WHERE value_date BETWEEN ? AND ? AND amount < 0
                 AND bank IN ('caixa', 'millennium')
             """
         else:
             sql = """
                 SELECT COALESCE(SUM(ABS(amount)), 0) FROM bank_transactions
-                WHERE posted_date BETWEEN ? AND ? AND amount < 0 AND bank = ?
+                WHERE value_date BETWEEN ? AND ? AND amount < 0 AND bank = ?
             """
         params = [p.start_date, p.end_date] if bank_filter == "both" else [p.start_date, p.end_date, bank_filter]
         row = conn.execute(sql, params).fetchone()
@@ -651,13 +651,13 @@ def get_top_outflows(
         limit: Max rows to return.
 
     Returns:
-        DataFrame with posted_date, bank, description_raw, category, subcategory, amount.
+        DataFrame with value_date, bank, description_raw, category, subcategory, amount.
     """
     period = _month_to_period(month_yyyy_mm)
     return pd.read_sql_query(
         """
         SELECT
-            b.posted_date,
+            b.value_date,
             b.bank,
             b.description_raw,
             COALESCE(m.category, 'UNMAPPED') AS category,
@@ -665,7 +665,7 @@ def get_top_outflows(
             b.amount
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ? AND b.amount < 0
+        WHERE b.value_date BETWEEN ? AND ? AND b.amount < 0
         ORDER BY b.amount ASC
         LIMIT ?
         """,
@@ -688,7 +688,7 @@ def get_inflows_with_cumulative(
         limit: Max rows to return.
 
     Returns:
-        DataFrame with posted_date, bank, description_raw, category, subcategory, amount, cumulative_inflow.
+        DataFrame with value_date, bank, description_raw, category, subcategory, amount, cumulative_inflow.
     """
     period = _month_to_period(month_yyyy_mm)
     # Fetch all inflows for the month, oldest first, to compute true cumulative.
@@ -696,7 +696,7 @@ def get_inflows_with_cumulative(
     df_all = pd.read_sql_query(
         """
         SELECT
-            b.posted_date,
+            b.value_date,
             b.bank,
             b.description_raw,
             COALESCE(m.category, 'UNMAPPED') AS category,
@@ -704,8 +704,8 @@ def get_inflows_with_cumulative(
             b.amount
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ? AND b.amount > 0
-        ORDER BY b.posted_date ASC, b.id ASC
+        WHERE b.value_date BETWEEN ? AND ? AND b.amount > 0
+        ORDER BY b.value_date ASC, b.id ASC
         """,
         conn,
         params=[period.start_date, period.end_date],
@@ -716,7 +716,7 @@ def get_inflows_with_cumulative(
     # Cumulative from start of month.
     df_all["cumulative_inflow"] = df_all["amount"].cumsum()
     # Return top N newest (most recent first).
-    return df_all.sort_values("posted_date", ascending=False).head(limit).reset_index(drop=True)
+    return df_all.sort_values("value_date", ascending=False).head(limit).reset_index(drop=True)
 
 
 def get_data_source_status(conn: sqlite3.Connection) -> dict[str, bool]:
@@ -791,7 +791,7 @@ def get_category_inflows(conn: sqlite3.Connection, period: DashboardPeriod) -> p
             ROUND(SUM(b.amount), 2) AS amount
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ? AND b.amount > 0
+        WHERE b.value_date BETWEEN ? AND ? AND b.amount > 0
         GROUP BY COALESCE(m.category, 'UNMAPPED')
         ORDER BY amount DESC
         """,
@@ -819,7 +819,7 @@ def get_category_outflows(conn: sqlite3.Connection, period: DashboardPeriod) -> 
             ROUND(SUM(ABS(b.amount)), 2) AS amount
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ? AND b.amount < 0
+        WHERE b.value_date BETWEEN ? AND ? AND b.amount < 0
         GROUP BY COALESCE(m.category, 'UNMAPPED')
         ORDER BY amount DESC
         """,
@@ -843,7 +843,7 @@ def get_transactions_by_category(
         direction: "inflow" (amount > 0) or "outflow" (amount < 0).
 
     Returns:
-        DataFrame with posted_date, bank, description_raw, category, amount.
+        DataFrame with value_date, bank, description_raw, category, amount.
     """
     if direction == "inflow":
         amount_filter = "b.amount > 0"
@@ -851,16 +851,16 @@ def get_transactions_by_category(
         amount_filter = "b.amount < 0"
     sql = f"""
         SELECT
-            b.posted_date,
+            b.value_date,
             b.bank,
             b.description_raw,
             COALESCE(m.category, 'UNMAPPED') AS category,
             b.amount
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ?
+        WHERE b.value_date BETWEEN ? AND ?
           AND {amount_filter}
-        ORDER BY COALESCE(m.category, 'UNMAPPED'), b.posted_date DESC
+        ORDER BY COALESCE(m.category, 'UNMAPPED'), b.value_date DESC
         """
     return pd.read_sql_query(sql, conn, params=[period.start_date, period.end_date])
 
@@ -891,13 +891,13 @@ def get_bank_trend_monthly(
         raise ValueError("metric must be net, outflow, or inflow")
     sql = f"""
         SELECT
-            strftime('%Y-%m', b.posted_date) AS month,
+            strftime('%Y-%m', b.value_date) AS month,
             b.bank,
             {expr} AS value
         FROM bank_transactions b
-        WHERE b.posted_date BETWEEN ? AND ?
+        WHERE b.value_date BETWEEN ? AND ?
           AND b.bank IN ('caixa', 'millennium')
-        GROUP BY strftime('%Y-%m', b.posted_date), b.bank
+        GROUP BY strftime('%Y-%m', b.value_date), b.bank
         ORDER BY month, b.bank
         """
     return pd.read_sql_query(sql, conn, params=[period.start_date, period.end_date])
@@ -929,7 +929,7 @@ def get_bank_details_kpis(
                 ROUND(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 2) AS outflow,
                 ROUND(SUM(amount), 2) AS net
             FROM bank_transactions
-            WHERE posted_date BETWEEN ? AND ? AND bank IN ('caixa', 'millennium')
+            WHERE value_date BETWEEN ? AND ? AND bank IN ('caixa', 'millennium')
             """,
             [p.start_date, p.end_date],
         ).fetchone()
@@ -940,14 +940,14 @@ def get_bank_details_kpis(
         cax = conn.execute(
             """
             SELECT COALESCE(SUM(ABS(amount)), 0) FROM bank_transactions
-            WHERE posted_date BETWEEN ? AND ? AND amount < 0 AND bank = 'caixa'
+            WHERE value_date BETWEEN ? AND ? AND amount < 0 AND bank = 'caixa'
             """,
             [p.start_date, p.end_date],
         ).fetchone()[0] or 0
         mil = conn.execute(
             """
             SELECT COALESCE(SUM(ABS(amount)), 0) FROM bank_transactions
-            WHERE posted_date BETWEEN ? AND ? AND amount < 0 AND bank = 'millennium'
+            WHERE value_date BETWEEN ? AND ? AND amount < 0 AND bank = 'millennium'
             """,
             [p.start_date, p.end_date],
         ).fetchone()[0] or 0
@@ -969,7 +969,7 @@ def get_bank_details_kpis(
             ROUND(SUM(ABS(b.amount)), 2) AS amt
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ? AND b.amount < 0
+        WHERE b.value_date BETWEEN ? AND ? AND b.amount < 0
         GROUP BY COALESCE(m.category, 'UNMAPPED')
         ORDER BY amt DESC
         LIMIT 1
@@ -1039,7 +1039,7 @@ def get_transaction_detail(conn: sqlite3.Connection, period: DashboardPeriod) ->
     return pd.read_sql_query(
         """
         SELECT
-            b.posted_date,
+            b.value_date,
             b.bank,
             b.account_id,
             b.description_raw,
@@ -1051,8 +1051,8 @@ def get_transaction_detail(conn: sqlite3.Connection, period: DashboardPeriod) ->
         FROM bank_transactions b
         LEFT JOIN transaction_category_map m
             ON b.description_norm = m.description_norm
-        WHERE b.posted_date BETWEEN ? AND ?
-        ORDER BY b.posted_date DESC, b.id DESC
+        WHERE b.value_date BETWEEN ? AND ?
+        ORDER BY b.value_date DESC, b.id DESC
         """,
         conn,
         params=[period.start_date, period.end_date],

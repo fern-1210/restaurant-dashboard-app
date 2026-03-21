@@ -30,14 +30,16 @@ def _list_caixa_files() -> list:
 
 
 def _list_millennium_files() -> list:
-    """List Millennium XLS files under the bank statements directory."""
+    """List Millennium XLS and XLSX files under the bank statements directory."""
     mil_dir = RAW_BANK_DIR / "account_2-Millennium-bcp"
-    return sorted(mil_dir.glob("*.xls"))
+    xls = list(mil_dir.glob("*.xls"))
+    xlsx = list(mil_dir.glob("*.xlsx"))
+    return sorted(xls + xlsx)
 
 
 def _within_batch_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     """Find duplicates within the DataFrame before insert (diagnostic only)."""
-    key_cols = ["bank", "account_id", "posted_date", "amount", "description_raw", "source_file", "source_row"]
+    key_cols = ["bank", "account_id", "value_date", "amount", "description_raw", "source_file", "source_row"]
     dup_mask = df.duplicated(subset=key_cols, keep=False)
     return df.loc[dup_mask].sort_values(key_cols).reset_index(drop=True)
 
@@ -92,20 +94,25 @@ def run_l3_bank_sqlite() -> int:
 
     audit_rows: list[dict] = []
     audit_rows.append({"metric": "files_caixa_csv", "value": len(_list_caixa_files())})
-    audit_rows.append({"metric": "files_millennium_xls", "value": len(_list_millennium_files())})
+    audit_rows.append({"metric": "files_millennium", "value": len(_list_millennium_files())})
     audit_rows.append({"metric": "rows_attempted_insert", "value": attempted})
     audit_rows.append({"metric": "rows_inserted", "value": inserted})
     audit_rows.append({"metric": "rows_ignored_duplicates", "value": ignored})
     audit_rows.append({"metric": "within_batch_duplicates_rows", "value": int(len(dup_df))})
 
     if not txns.empty:
-        audit_rows.append({"metric": "posted_date_min", "value": str(txns["posted_date"].min())})
-        audit_rows.append({"metric": "posted_date_max", "value": str(txns["posted_date"].max())})
+        audit_rows.append({"metric": "value_date_min", "value": str(txns["value_date"].min())})
+        audit_rows.append({"metric": "value_date_max", "value": str(txns["value_date"].max())})
         credits = txns.loc[txns["amount"] > 0, "amount"].sum()
         debits = txns.loc[txns["amount"] < 0, "amount"].sum()
         audit_rows.append({"metric": "credits_sum", "value": float(credits)})
         audit_rows.append({"metric": "debits_sum", "value": float(debits)})
         audit_rows.append({"metric": "net_sum", "value": float(credits + debits)})
+        for bank in txns["bank"].unique():
+            sub = txns[txns["bank"] == bank]
+            audit_rows.append({"metric": f"rows_{bank}", "value": len(sub)})
+            audit_rows.append({"metric": f"{bank}_value_date_min", "value": str(sub["value_date"].min())})
+            audit_rows.append({"metric": f"{bank}_value_date_max", "value": str(sub["value_date"].max())})
 
     audit_path = REPORTS_DIR / "bank_transactions_audit.csv"
     pd.DataFrame(audit_rows).to_csv(audit_path, index=False)

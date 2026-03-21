@@ -493,13 +493,13 @@ def _render_bank_details_tab(
             cat_df = inflow_df[inflow_df["category"] == cat]
             total = cat_df["amount"].sum()
             with st.expander(f"{cat} — €{total:,.2f}"):
-                show = cat_df[["posted_date", "bank", "description_raw", "amount"]]
+                show = cat_df[["value_date", "bank", "description_raw", "amount"]]
                 st.dataframe(
                     show,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "posted_date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
+                        "value_date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
                         "bank": st.column_config.TextColumn("Bank"),
                         "description_raw": st.column_config.TextColumn("Description"),
                         "amount": st.column_config.NumberColumn("Amount", format="€%.2f"),
@@ -530,13 +530,13 @@ def _render_bank_details_tab(
             cat_df = outflow_df[outflow_df["category"] == cat]
             total = cat_df["amount"].abs().sum()
             with st.expander(f"{cat} — €{total:,.2f}"):
-                show = cat_df[["posted_date", "bank", "description_raw", "amount"]]
+                show = cat_df[["value_date", "bank", "description_raw", "amount"]]
                 st.dataframe(
                     show,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "posted_date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
+                        "value_date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
                         "bank": st.column_config.TextColumn("Bank"),
                         "description_raw": st.column_config.TextColumn("Description"),
                         "amount": st.column_config.NumberColumn("Amount", format="€%.2f"),

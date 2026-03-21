@@ -58,11 +58,10 @@ def create_bank_transactions_table(conn: sqlite3.Connection) -> None:
     We want a normalized representation that is consistent across banks and file formats.
 
     # How
-    - Store dates as ISO text.
+    - value_date (Data Valor) = main transaction date; used for period filtering.
+    - posting_date (Data Lancamento) = when bank posted; kept for audit.
     - Store amount as signed float: credits positive, debits negative.
-    - Keep raw description + a normalized description for easier grouping/search.
-    - Keep lineage fields (source_file, source_row) so we can audit + debug parsing.
-    - Add a uniqueness index to prevent double-ingestion on re-runs.
+    - Keep lineage fields (source_file, source_row) for audit + debug.
     """
 
     conn.execute(
@@ -71,8 +70,8 @@ def create_bank_transactions_table(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id TEXT NOT NULL,
             bank TEXT NOT NULL,
-            posted_date TEXT NOT NULL,
-            value_date TEXT,
+            value_date TEXT NOT NULL,
+            posting_date TEXT,
             description_raw TEXT,
             description_norm TEXT,
             amount REAL NOT NULL,
@@ -85,15 +84,17 @@ def create_bank_transactions_table(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # Duplicate protection (idempotent loads):
-    # If we re-run ingestion on the same source files, we don't want duplicate rows.
+    # Migrate legacy schema (posted_date) to new (posting_date, value_date primary).
+    _migrate_bank_transactions_date_columns(conn)
+
+    # Duplicate protection (idempotent loads).
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS ux_bank_transactions_source_row
         ON bank_transactions (
             bank,
             account_id,
-            posted_date,
+            value_date,
             amount,
             description_raw,
             source_file,
@@ -102,13 +103,35 @@ def create_bank_transactions_table(conn: sqlite3.Connection) -> None:
         """
     )
 
-    # Helpful index for filtering by date ranges (common in BI queries).
+    # Index for date-range filtering.
     conn.execute(
         """
-        CREATE INDEX IF NOT EXISTS ix_bank_transactions_posted_date
-        ON bank_transactions (posted_date);
+        CREATE INDEX IF NOT EXISTS ix_bank_transactions_value_date
+        ON bank_transactions (value_date);
         """
     )
+
+
+def _migrate_bank_transactions_date_columns(conn: sqlite3.Connection) -> None:
+    """
+    Migrate bank_transactions from posted_date to value_date+posting_date schema.
+
+    - posted_date (Data Lancamento) -> posting_date
+    - value_date (Data Valor) stays; becomes primary for filtering
+    """
+    cur = conn.execute("PRAGMA table_info(bank_transactions)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "posted_date" not in cols:
+        return
+    # Backfill value_date where null so NOT NULL constraint can apply later.
+    conn.execute(
+        "UPDATE bank_transactions SET value_date = posted_date WHERE value_date IS NULL"
+    )
+    conn.execute("ALTER TABLE bank_transactions RENAME COLUMN posted_date TO posting_date")
+    conn.commit()
+    # Recreate indexes (old ones referenced posted_date).
+    conn.execute("DROP INDEX IF EXISTS ux_bank_transactions_source_row")
+    conn.execute("DROP INDEX IF EXISTS ix_bank_transactions_posted_date")
 
 
 def create_transaction_category_map_table(conn: sqlite3.Connection) -> None:

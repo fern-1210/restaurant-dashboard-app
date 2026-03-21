@@ -14,7 +14,7 @@ We want to transform that into a consistent schema we can load into SQLite.
 1) Scan the file until we find the header row that starts with 'Data mov.'
 2) Use pandas to read the table portion
 3) Normalize columns into:
-   account_id, bank, posted_date, value_date, description_raw, description_norm,
+   account_id, bank, value_date, posting_date, description_raw, description_norm,
    amount, balance, currency, source_file, source_row, imported_at
 """
 
@@ -163,8 +163,9 @@ def parse_caixa_csv(path: Path, *, bank: str = "caixa", currency: str = "EUR") -
     col_desc = find_col(lambda c: "descr" in str(c).strip().lower())
 
     # Fail fast if critical columns are missing; otherwise you'd ingest garbage.
+    # value_date (Data Valor) is primary; posting_date (Data mov.) is secondary.
     missing = [name for name, col in [
-        ("posted_date", col_posted_date),
+        ("value_date", col_value_date),
         ("amount", col_amount),
     ] if col is None]
     if missing:
@@ -191,9 +192,9 @@ def parse_caixa_csv(path: Path, *, bank: str = "caixa", currency: str = "EUR") -
     # Account id: use extracted digits if possible; otherwise fallback to folder name.
     out["account_id"] = account_id if account_id else path.parent.name
 
-    # Dates: convert to ISO.
-    out["posted_date"] = to_iso_date(df[col_posted_date])
-    out["value_date"] = to_iso_date(df[col_value_date]) if col_value_date else None
+    # Dates: value_date (Data Valor) = main; posting_date (Data mov.) = when bank posted.
+    out["value_date"] = to_iso_date(df[col_value_date])
+    out["posting_date"] = to_iso_date(df[col_posted_date]) if col_posted_date else None
 
     # Description fields.
     out["description_raw"] = df[col_desc] if col_desc else None
@@ -233,9 +234,9 @@ def parse_caixa_csv(path: Path, *, bank: str = "caixa", currency: str = "EUR") -
     out["imported_at"] = now_utc_iso()
 
     # Define what "unparsed" means:
-    # - posted_date couldn't be parsed to a date
+    # - value_date couldn't be parsed to a date
     # - amount couldn't be parsed to a number
-    bad_mask = out["posted_date"].isna() | out["amount"].isna()
+    bad_mask = out["value_date"].isna() | out["amount"].isna()
 
     unparsed = out.loc[bad_mask].copy()
     parsed = out.loc[~bad_mask].copy()
