@@ -37,6 +37,20 @@ WAREHOUSE_DIR = Path("data") / "warehouse"
 # "Reports" directory: audit outputs, duplicates lists, etc.
 REPORTS_DIR = Path("data") / "reports"
 
+# "Audit" directory: staged audit workbooks and review handoff files.
+AUDIT_DIR = Path("data") / "audit"
+
+# Stage 0 reviewed workbook (filled by business review).
+STAGE0_REVIEWED_WORKBOOK_PATH = AUDIT_DIR / "stage0_inflow_audit_reviewed.xlsx"
+
+# Stage 1 classified workbook output.
+STAGE1_CLASSIFIED_WORKBOOK_PATH = AUDIT_DIR / "stage1_inflow_classification.xlsx"
+
+# Outflow audit / classification (Stage 0 + Stage 1).
+STAGE0_OUTFLOW_AUDIT_PATH = AUDIT_DIR / "stage0_outflow_audit.xlsx"
+STAGE0_OUTFLOW_REVIEWED_PATH = AUDIT_DIR / "stage0_outflow_audit_reviewed.xlsx"
+STAGE1_OUTFLOW_CLASSIFIED_PATH = AUDIT_DIR / "stage1_outflow_classification.xlsx"
+
 # SQLite database file (single file, many tables).
 DB_PATH = WAREHOUSE_DIR / "venn.db"
 

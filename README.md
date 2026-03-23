@@ -187,14 +187,22 @@ Opens at `http://localhost:8501`.
 │   ├── L2_load_revenue_to_sqlite.py
 │   ├── L3_load_bank_to_sqlite.py
 │   ├── L4_load_category_map_to_sqlite.py
-│   └── L4_generate_partner_mapping_template.py
+│   ├── L4_generate_partner_mapping_template.py
+│   ├── L0_generate_inflow_audit_workbook.py
+│   ├── S1_apply_inflow_classification.py
+│   ├── L0_generate_outflow_audit_workbook.py
+│   └── S1_apply_outflow_classification.py
 │
 ├── scripts_pipeline/                # Reusable logic (imported by scripts)
 │   ├── layers/                     # Layer-aligned entrypoints — read these first
 │   │   ├── l1_revenue.py
 │   │   ├── l2_revenue_sqlite.py
 │   │   ├── l3_bank_sqlite.py
-│   │   └── l4_category_sqlite.py
+│   │   ├── l4_category_sqlite.py
+│   │   ├── l0_inflow_audit.py
+│   │   ├── stage1_inflow_classification.py
+│   │   ├── l0_outflow_audit.py
+│   │   └── stage1_outflow_classification.py
 │   ├── db.py                       # SQLite connection helper
 │   ├── schema.py                   # Table and index definitions
 │   ├── paths.py                    # Centralised file paths
@@ -212,6 +220,7 @@ Opens at `http://localhost:8501`.
 │
 ├── data/                           # ← gitignored — local outputs only
 │   ├── warehouse/                  # venn.db lives here
+│   ├── audit/                      # Stage 0/1 inflow & outflow review workbooks
 │   ├── reports/                    # Audit CSVs
 │   └── partner_input/              # Category mapping Excel files
 │
@@ -279,6 +288,8 @@ python scripts_orchestrator/L4_generate_partner_mapping_template.py
 # → then load it:
 python scripts_orchestrator/L4_load_category_map_to_sqlite.py
 ```
+
+**Inflow / outflow review (optional)** — partner workbooks under `data/audit/`. After you classify inflows, run `scripts_orchestrator/S1_apply_inflow_classification.py` so the dashboard reads Stage 1 buckets from `bank_inflow_stage1`. Outflow review: `L0_generate_outflow_audit_workbook.py` → save reviewed file → `S1_apply_outflow_classification.py`. See `docs/stage0-partner-review-guide.md` and `docs/stage0-partner-review-outflow.md`.
 
 ### 6. Launch the dashboard
 ```bash

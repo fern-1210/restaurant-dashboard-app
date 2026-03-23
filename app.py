@@ -38,6 +38,7 @@ from dashboard.data_prep import (
 )
 from scripts_pipeline.db import connect_sqlite
 from scripts_pipeline.paths import DB_PATH
+from scripts_pipeline.schema import create_all_tables
 
 # ---- Colour palette (plan: green inflow, red outflow, neutral) ----
 COLOR_INFLOW = "#639922"
@@ -210,6 +211,7 @@ def main() -> None:
     )
 
     conn = connect_sqlite(DB_PATH)
+    create_all_tables(conn)
 
     # ---- Sidebar: Filters ----
     with st.sidebar:
@@ -310,7 +312,8 @@ def _render_summary_tab(
 
 **Two different data sources**
 - Top revenue cards come from **Vendus** daily totals.
-- **Inflow / outflow** charts use **Caixa + Millennium** movements and your category mapping — not the same as “sales by product”.
+- **Inflow** category bars use **Stage 1 inflow buckets** (e.g. `OperatingRevenue`, `InterbankTransfer`) from `bank_inflow_stage1`, refreshed when you run `scripts_orchestrator/S1_apply_inflow_classification.py`.
+- **Outflow** category bars still use your **partner category mapping** (`transaction_category_map`) until the outflow review pipeline is applied.
 
 **Compare to** (sidebar) — Revenue card deltas use **Previous month** or **same month last year** when a single month is selected; for **All months** they compare to the **prior calendar year**.
             """.strip()
@@ -431,7 +434,10 @@ def _render_summary_tab(
             )
             _style_summary_category_bar(fig_in, len(inflow_view), COLOR_INFLOW)
             st.plotly_chart(fig_in, use_container_width=True)
-        _render_source_line("bank_transactions + transaction_category_map · amount > 0 grouped by category", show_sources)
+        _render_source_line(
+            "bank_transactions · amount > 0 · category = Stage 1 bucket (bank_inflow_stage1) with legacy map fallback",
+            show_sources,
+        )
 
     st.divider()
 
@@ -583,7 +589,10 @@ def _render_bank_details_tab(
                         "amount": st.column_config.NumberColumn("Amount", format="€%.2f"),
                     },
                 )
-        _render_source_line("bank_transactions + transaction_category_map · posted rows where amount > 0", show_sources)
+        _render_source_line(
+            "bank_transactions · amount > 0 · category = Stage 1 bucket (bank_inflow_stage1) with legacy map fallback",
+            show_sources,
+        )
 
     st.divider()
 

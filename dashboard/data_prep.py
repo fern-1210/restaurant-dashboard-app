@@ -817,15 +817,20 @@ def get_category_inflows(conn: sqlite3.Connection, period: DashboardPeriod) -> p
     Returns:
         DataFrame with columns: category, amount (positive totals).
     """
+    # ----------------------------------
+    # Stage 1 inflow buckets (dashboard)
+    # Prefer bank_inflow_stage1.final_bucket when present; else legacy map.
+    # ----------------------------------
     df = pd.read_sql_query(
         """
         SELECT
-            COALESCE(m.category, 'UNMAPPED') AS category,
+            COALESCE(s.final_bucket, COALESCE(m.category, 'UNMAPPED')) AS category,
             ROUND(SUM(b.amount), 2) AS amount
         FROM bank_transactions b
+        LEFT JOIN bank_inflow_stage1 s ON s.bank_transaction_id = b.id
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
         WHERE b.value_date BETWEEN ? AND ? AND b.amount > 0
-        GROUP BY COALESCE(m.category, 'UNMAPPED')
+        GROUP BY COALESCE(s.final_bucket, COALESCE(m.category, 'UNMAPPED'))
         ORDER BY amount DESC
         """,
         conn,
@@ -880,20 +885,31 @@ def get_transactions_by_category(
     """
     if direction == "inflow":
         amount_filter = "b.amount > 0"
+        category_expr = (
+            "COALESCE(s.final_bucket, COALESCE(m.category, 'UNMAPPED')) AS category"
+        )
+        join_stage1 = "LEFT JOIN bank_inflow_stage1 s ON s.bank_transaction_id = b.id"
+        order_category = (
+            "COALESCE(s.final_bucket, COALESCE(m.category, 'UNMAPPED'))"
+        )
     else:
         amount_filter = "b.amount < 0"
+        category_expr = "COALESCE(m.category, 'UNMAPPED') AS category"
+        join_stage1 = ""
+        order_category = "COALESCE(m.category, 'UNMAPPED')"
     sql = f"""
         SELECT
             b.value_date,
             b.bank,
             b.description_raw,
-            COALESCE(m.category, 'UNMAPPED') AS category,
+            {category_expr},
             b.amount
         FROM bank_transactions b
+        {join_stage1}
         LEFT JOIN transaction_category_map m ON b.description_norm = m.description_norm
         WHERE b.value_date BETWEEN ? AND ?
           AND {amount_filter}
-        ORDER BY COALESCE(m.category, 'UNMAPPED'), b.value_date DESC
+        ORDER BY {order_category}, b.value_date DESC
         """
     return pd.read_sql_query(sql, conn, params=[period.start_date, period.end_date])
 

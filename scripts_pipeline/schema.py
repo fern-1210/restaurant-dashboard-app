@@ -217,6 +217,89 @@ def create_category_taxonomy_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def create_inflow_classification_map_table(conn: sqlite3.Connection) -> None:
+    """
+    # What
+    Create the `inflow_classification_map` table.
+
+    # Why
+    Stage 1 needs a stable place to store reviewed inflow decisions from business
+    owners so classification can be repeatable month to month.
+
+    # How
+    Keep one row per `description_norm` and store canonical bucket metadata plus
+    review context (owner tag, notes, reviewed timestamps).
+    """
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inflow_classification_map (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            description_norm TEXT NOT NULL,
+            final_bucket TEXT NOT NULL,
+            final_subbucket TEXT,
+            owner_tag TEXT,
+            confidence TEXT,
+            decision_notes TEXT,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            source_workbook TEXT,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_inflow_classification_map_description_norm
+        ON inflow_classification_map (description_norm);
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_inflow_classification_map_bucket
+        ON inflow_classification_map (final_bucket, final_subbucket);
+        """
+    )
+
+
+def create_bank_inflow_stage1_table(conn: sqlite3.Connection) -> None:
+    """
+    # What
+    Create `bank_inflow_stage1`: one row per inflow bank transaction with Stage 1 labels.
+
+    # Why
+    The dashboard needs fast SQL joins without re-running Python rule logic on every
+    Streamlit refresh. Stage 1 script refreshes this table after each classification run.
+
+    # How
+    Primary key is `bank_transaction_id` matching `bank_transactions.id`.
+    """
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bank_inflow_stage1 (
+            bank_transaction_id INTEGER PRIMARY KEY,
+            final_bucket TEXT NOT NULL,
+            final_subbucket TEXT,
+            owner_tag TEXT,
+            decision_source TEXT,
+            exclude_from_revenue_metric INTEGER NOT NULL DEFAULT 0,
+            include_in_revenue_metric INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_bank_inflow_stage1_bucket
+        ON bank_inflow_stage1 (final_bucket);
+        """
+    )
+
+
 def create_all_tables(conn: sqlite3.Connection) -> None:
     """
     # What
@@ -234,5 +317,7 @@ def create_all_tables(conn: sqlite3.Connection) -> None:
     create_bank_transactions_table(conn)
     create_transaction_category_map_table(conn)
     create_category_taxonomy_table(conn)
+    create_inflow_classification_map_table(conn)
+    create_bank_inflow_stage1_table(conn)
     conn.commit()
 

@@ -12,4 +12,6 @@ is visible at the top of each orchestration script.
 - l2_revenue_sqlite: revenue_daily.csv → SQLite revenue_daily table
 - l3_bank_sqlite: bank statement files → SQLite bank_transactions table
 - l4_category_sqlite: category Excel → SQLite transaction_category_map + taxonomy
+- l0_inflow_audit / stage1_inflow_classification: inflow audit workbooks + Stage 1 buckets
+- l0_outflow_audit / stage1_outflow_classification: outflow audit workbooks + map upserts
 """
